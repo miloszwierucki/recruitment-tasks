@@ -217,6 +217,10 @@ const summaryMetadata = [
     label: "Average Unit Price",
   },
 ];
+// Add array for full data
+let fullData = data;
+// Add array for additional metadata with visible property
+let additionalMetadata = [];
 
 const searchInputElement = document.body.querySelector("input.search-input");
 const searchButtonElement = document.body.querySelector("button.search-go");
@@ -242,9 +246,6 @@ const placeForSummaryTableElement = document.body.querySelector(
   "div.table-summary-div"
 );
 
-let additionalMetadata = [];
-let fullData = data;
-
 class Grid {
   constructor() {
     // Edit lines below ;)
@@ -261,6 +262,7 @@ class Grid {
       ),
     ];
     this.metadata = additionalMetadata;
+    this.inputValue = "";
 
     // HINT: below map can be useful for view operations ;))
     this.dataViewRef = new Map();
@@ -281,7 +283,7 @@ class Grid {
     this.renderHead();
     this.renderBody();
 
-    placeForTableElement.append(this.table);
+    document.body.append(this.table);
   }
 
   renderHead() {
@@ -308,6 +310,23 @@ class Grid {
       // connect data row reference with view row reference
       this.dataViewRef.set(dataRow, row);
     }
+  }
+
+  renderMetadata(newMetadata) {
+    this.head.rows[0].remove();
+    this.metadata = newMetadata;
+
+    this.renderHead();
+    this.renderData(this.data);
+  }
+
+  renderData(newData) {
+    for (const dataRow of this.data) {
+      this.dataViewRef.get(dataRow).remove();
+    }
+
+    this.data = newData;
+    this.renderBody();
   }
 
   live() {
@@ -351,52 +370,50 @@ class Grid {
   }
 
   onSearchGo(event) {
-    this.table.remove();
-    this.render();
+    const filteredData = data.filter(
+      (item) =>
+        item.title.toLowerCase().includes(this.inputValue) ||
+        item.author.toLowerCase().includes(this.inputValue)
+    );
+
+    this.renderData(filteredData);
   }
 
   onSearchChange(event) {
-    const searchValue = event.target.value.toLowerCase();
-    const filteredData = data.filter(
-      (item) =>
-        item.title.toLowerCase().includes(searchValue) ||
-        item.author.toLowerCase().includes(searchValue)
-    );
-
-    this.data = filteredData;
+    this.inputValue = event.target.value.toLowerCase();
   }
 
   onSearchReset(event) {
     searchInputElement.value = "";
-    this.data = data;
-    fullData = this.data;
-    this.table.remove();
-    this.render();
+    this.inputValue = "";
+
+    fullData = data;
+    this.renderData(data);
   }
 
   onColumnHideClick(event) {
-    additionalMetadata.find((column) => column.hidden !== true).hidden = true;
-    this.metadata = additionalMetadata.filter(
-      (column) => column.hidden !== true
+    additionalMetadata.find(
+      (column) => column.visible !== false
+    ).visible = false;
+    this.renderMetadata(
+      additionalMetadata.filter((column) => column.visible !== false)
     );
-    this.table.remove();
-    this.render();
   }
 
   onColumnShowClick(event) {
-    additionalMetadata.find((column) => column.hidden === true).hidden = false;
-    this.metadata = additionalMetadata.filter(
-      (column) => column.hidden !== true
+    additionalMetadata.find(
+      (column) => column.visible === false
+    ).visible = true;
+    this.renderMetadata(
+      additionalMetadata.filter((column) => column.visible !== false)
     );
-    this.table.remove();
-    this.render();
   }
 
   onColumnReset(event) {
-    additionalMetadata.forEach((column) => (column.hidden = false));
-    this.metadata = additionalMetadata;
-    this.table.remove();
-    this.render();
+    additionalMetadata.forEach((column) => (column.visible = true));
+    this.renderMetadata(
+      additionalMetadata.filter((column) => column.visible !== false)
+    );
   }
 
   onMarkEmptyClick(event) {
@@ -471,57 +488,12 @@ class Grid {
     }
 
     fullData = this.data;
-    this.data = data.map((object) =>
-      Object.assign(
-        object,
-        additionalDataFromBooksDB.find((e) => e.title === object.title)
-      )
-    );
   }
 }
 
 // Add new summary table
 class SummaryGrid {
   constructor() {
-    this.updateSummaryTable = () => {
-      const summaryData = fullData.reduce((acc, curr) => {
-        const { author, quantity, unit_price } = curr;
-        const { titles, total_quantity, total_revenue } = acc[author] || {
-          titles: 0,
-          total_quantity: 0,
-          total_revenue: 0,
-        };
-
-        return {
-          ...acc,
-          [author]: {
-            titles: titles + 1,
-            unit_price: unit_price,
-            total_quantity: total_quantity + quantity,
-            total_revenue: total_revenue + quantity * unit_price,
-          },
-        };
-      }, {});
-
-      const summaryDataArray = Object.entries(summaryData).map(
-        ([author, { titles, unit_price, total_quantity, total_revenue }]) => {
-          return {
-            author,
-            titles,
-            total_quantity,
-            total_revenue,
-            average_quantity: +parseFloat(total_quantity / titles).toFixed(2),
-            average_unit_price:
-              +parseFloat(total_revenue / total_quantity).toFixed(1) ||
-              unit_price ||
-              0,
-          };
-        }
-      );
-
-      return summaryDataArray;
-    };
-
     this.data = this.updateSummaryTable();
     this.metadata = summaryMetadata;
     this.dataViewRef = new Map();
@@ -554,7 +526,7 @@ class SummaryGrid {
     this.renderHead();
     this.renderBody();
 
-    placeForSummaryTableElement.append(this.table);
+    document.body.append(this.table);
   }
 
   renderHead() {
@@ -582,22 +554,64 @@ class SummaryGrid {
     }
   }
 
+  renderData(newData) {
+    for (const dataRow of this.data) {
+      this.dataViewRef.get(dataRow).remove();
+    }
+
+    this.data = newData;
+    this.renderBody();
+  }
+
+  updateSummaryTable = () => {
+    const summaryData = fullData.reduce((acc, curr) => {
+      const { author, quantity, unit_price } = curr;
+      const { titles, total_quantity, total_revenue } = acc[author] || {
+        titles: 0,
+        total_quantity: 0,
+        total_revenue: 0,
+      };
+
+      return {
+        ...acc,
+        [author]: {
+          titles: titles + 1,
+          unit_price: unit_price,
+          total_quantity: total_quantity + quantity,
+          total_revenue: total_revenue + quantity * unit_price,
+        },
+      };
+    }, {});
+
+    const summaryDataArray = Object.entries(summaryData).map(
+      ([author, { titles, unit_price, total_quantity, total_revenue }]) => {
+        return {
+          author,
+          titles,
+          total_quantity,
+          total_revenue,
+          average_quantity: +parseFloat(total_quantity / titles).toFixed(2),
+          average_unit_price:
+            +parseFloat(total_revenue / total_quantity).toFixed(1) ||
+            unit_price ||
+            0,
+        };
+      }
+    );
+
+    return summaryDataArray;
+  };
+
   onSearchReset(event) {
-    this.data = this.updateSummaryTable();
-    this.table.remove();
-    this.render();
+    this.renderData(this.updateSummaryTable());
   }
 
   onFillTableClick(event) {
-    this.data = this.updateSummaryTable();
-    this.table.remove();
-    this.render();
+    this.renderData(this.updateSummaryTable());
   }
 
   onFunctionsResetClick(event) {
-    this.data = this.updateSummaryTable();
-    this.table.remove();
-    this.render();
+    this.renderData(this.updateSummaryTable());
   }
 }
 
