@@ -184,6 +184,40 @@ const additionalMetadataFromBooksDB = [
   },
 ];
 
+// Add new metadata for summary table
+const summaryMetadata = [
+  {
+    id: "author",
+    type: "string",
+    label: "Author",
+  },
+  {
+    id: "titles",
+    type: "number",
+    label: "Titles",
+  },
+  {
+    id: "total_quantity",
+    type: "number",
+    label: "Total Quantity",
+  },
+  {
+    id: "total_revenue",
+    type: "number",
+    label: "Total Revenue",
+  },
+  {
+    id: "average_quantity",
+    type: "number",
+    label: "Average Quantity",
+  },
+  {
+    id: "average_unit_price",
+    type: "number",
+    label: "Average Unit Price",
+  },
+];
+
 const searchInputElement = document.body.querySelector("input.search-input");
 const searchButtonElement = document.body.querySelector("button.search-go");
 const searchResetElement = document.body.querySelector("button.search-reset");
@@ -202,7 +236,14 @@ const resetFunctionButtonElement = document.body.querySelector(
   "button.function-reset"
 );
 
+// Add div - place for table
+const placeForTableElement = document.body.querySelector("div.table-div");
+const placeForSummaryTableElement = document.body.querySelector(
+  "div.table-summary-div"
+);
+
 let additionalMetadata = [];
+let fullData = data;
 
 class Grid {
   constructor() {
@@ -240,7 +281,7 @@ class Grid {
     this.renderHead();
     this.renderBody();
 
-    document.body.append(this.table);
+    placeForTableElement.append(this.table);
   }
 
   renderHead() {
@@ -321,12 +362,14 @@ class Grid {
         item.title.toLowerCase().includes(searchValue) ||
         item.author.toLowerCase().includes(searchValue)
     );
+
     this.data = filteredData;
   }
 
   onSearchReset(event) {
-    this.data = data;
     searchInputElement.value = "";
+    this.data = data;
+    fullData = this.data;
     this.table.remove();
     this.render();
   }
@@ -366,7 +409,7 @@ class Grid {
   }
 
   onFillTableClick(event) {
-    const fullData = this.data.map((item) => {
+    fullData = this.data.map((item) => {
       return Object.assign({}, item, {
         quantity:
           item.quantity === null
@@ -383,9 +426,14 @@ class Grid {
       });
     });
 
-    this.data = fullData;
-    this.table.remove();
-    this.render();
+    for (const dataRow of this.data) {
+      for (let i = 0; i < this.metadata.length; i++) {
+        const cell = this.dataViewRef.get(dataRow).cells[i];
+        cell.innerHTML = fullData.find((e) => e.title === dataRow.title)[
+          this.metadata[i].id
+        ];
+      }
+    }
   }
 
   onCountEmptyClick(event) {
@@ -417,20 +465,141 @@ class Grid {
     for (const dataRow of this.data) {
       for (let i = 0; i < this.metadata.length; i++) {
         const cell = this.dataViewRef.get(dataRow).cells[i];
-        cell.innerHTML === "" && (cell.style.border = "0px");
+        cell.style.border = "0px";
+        cell.innerHTML = dataRow[this.metadata[i].id];
       }
     }
 
+    fullData = this.data;
     this.data = data.map((object) =>
       Object.assign(
         object,
         additionalDataFromBooksDB.find((e) => e.title === object.title)
       )
     );
+  }
+}
 
+// Add new summary table
+class SummaryGrid {
+  constructor() {
+    this.updateSummaryTable = () => {
+      const summaryData = fullData.reduce((acc, curr) => {
+        const { author, quantity, unit_price } = curr;
+        const { titles, total_quantity, total_revenue } = acc[author] || {
+          titles: 0,
+          total_quantity: 0,
+          total_revenue: 0,
+        };
+
+        return {
+          ...acc,
+          [author]: {
+            titles: titles + 1,
+            unit_price: unit_price,
+            total_quantity: total_quantity + quantity,
+            total_revenue: total_revenue + quantity * unit_price,
+          },
+        };
+      }, {});
+
+      const summaryDataArray = Object.entries(summaryData).map(
+        ([author, { titles, unit_price, total_quantity, total_revenue }]) => {
+          return {
+            author,
+            titles,
+            total_quantity,
+            total_revenue,
+            average_quantity: +parseFloat(total_quantity / titles).toFixed(2),
+            average_unit_price:
+              +parseFloat(total_revenue / total_quantity).toFixed(1) ||
+              unit_price ||
+              0,
+          };
+        }
+      );
+
+      return summaryDataArray;
+    };
+
+    this.data = this.updateSummaryTable();
+    this.metadata = summaryMetadata;
+    this.dataViewRef = new Map();
+
+    Object.freeze(this.data);
+    Object.freeze(this.metadata);
+
+    this.live();
+    this.render();
+  }
+
+  live() {
+    searchResetElement.addEventListener("click", this.onSearchReset.bind(this));
+    fillButtonElement.addEventListener(
+      "click",
+      this.onFillTableClick.bind(this)
+    );
+    resetFunctionButtonElement.addEventListener(
+      "click",
+      this.onFunctionsResetClick.bind(this)
+    );
+  }
+
+  render() {
+    this.table = document.createElement("table");
+
+    this.head = this.table.createTHead();
+    this.body = this.table.createTBody();
+
+    this.renderHead();
+    this.renderBody();
+
+    placeForSummaryTableElement.append(this.table);
+  }
+
+  renderHead() {
+    const row = this.head.insertRow();
+
+    for (const column of this.metadata) {
+      const cell = row.insertCell();
+
+      cell.innerText = column.label;
+    }
+  }
+
+  renderBody() {
+    for (const dataRow of this.data) {
+      const row = this.body.insertRow();
+
+      for (const column of this.metadata) {
+        const cell = row.insertCell();
+
+        cell.classList.add(column.type);
+        cell.innerText = dataRow[column.id];
+      }
+
+      this.dataViewRef.set(dataRow, row);
+    }
+  }
+
+  onSearchReset(event) {
+    this.data = this.updateSummaryTable();
+    this.table.remove();
+    this.render();
+  }
+
+  onFillTableClick(event) {
+    this.data = this.updateSummaryTable();
+    this.table.remove();
+    this.render();
+  }
+
+  onFunctionsResetClick(event) {
+    this.data = this.updateSummaryTable();
     this.table.remove();
     this.render();
   }
 }
 
 new Grid();
+new SummaryGrid();
